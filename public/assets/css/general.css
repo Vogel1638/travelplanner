@@ -1,0 +1,34 @@
+:root {
+    --primary-color: #236BBE;
+    --secondary-color: #50C878;
+    --text-color: #232323;
+    --backgroung-color: #E2E2E2;
+}
+
+.logo > a {
+    font-size: 1.5rem;
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 700;
+}
+
+.logo .secondary {
+    color: var(--secondary-color);
+}
+
+button {
+    padding: 10px 35px;
+    border-radius: 25px;
+    border: none;
+    background-color: var(--primary-color);
+    transition: background 0.3s ease-in-out;
+    cursor: pointer;
+    color: #fff;
+}
+
+button > a {
+    color: #fff;
+    font-size: 1.25rem;
+    text-decoration: none;
+    font-weight: 700;
+}

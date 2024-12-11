@@ -1,0 +1,378 @@
+/*SECTION - Hero*/
+.hero-section {
+    background: url('../images/home/Group\ 45.png');
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    max-width: 100vw;
+    height: 140vh;
+    padding: 40px 60px;
+}
+
+.hero-container {
+    display: flex;
+    height: 100vh;
+}
+
+.navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 9999; 
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 5%;
+    transition: background-color 0.3s ease-in-out; 
+}
+
+.navbar.transparent {
+    background: none; 
+}
+
+.navbar.scrolled {
+    background: rgba(0, 0, 0, 0.5); 
+    backdrop-filter: blur(5px); 
+}
+
+
+#login:hover, #register:hover, .cta:hover {
+    background: none;
+    border: 2px solid #fff;
+}
+
+#login:hover > a, #register:hover > a, .cta:hover > a {
+    color: #fff;
+}
+
+.hero-content {
+    align-self: center;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    color: #fff;
+}
+
+.hero-title {
+    font-size: 3rem;
+    max-width: 70%;
+}
+
+.cta {
+    width: 40%;
+}
+/* !SECTION */
+/*SECTION - Description*/
+.description-section {
+    padding: 0px 60px;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    margin-top: 80px;
+    gap: 60px;
+}
+
+.description-container { 
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 15px;
+}
+
+.description-title {
+    font-size: 30pt;
+    font-weight: 700;
+}
+
+.description-text {
+    font-size: 20pt;
+    font-weight: 500;
+}
+
+.description-section > img {
+    max-width: 50%;
+    border-radius: 20px;
+}
+/* !SECTION */
+/*SECTION - Features 1 */
+.angled-section {
+    background: var(--secondary-color);
+    color: white;
+    clip-path: polygon(0 0, 100% 5%, 100% 100%, 0 95%);
+    padding-bottom: 150px;
+}
+
+.features-section-1 .features-content {
+    padding: 150px 60px;
+}
+
+.features-section-1 .features-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+}
+
+.features-section-1 .feature-card {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+.features-section-1 .feature-card > img {
+    width: 100%;
+    border-radius: 20px;
+}
+
+.features-section-1 .feature-card > h3 {
+    font-size: 1.5rem;
+}
+
+.features-section-1 .feature-card > p {
+    font-size: 1.25rem;
+}
+/* !SECTION */
+/*SECTION - CTA Section*/
+.cta_section {
+    padding: 0px 60px;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    margin-top: 80px;
+    gap: 60px;
+}
+
+.cta-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 15px;
+}
+
+.cta-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+}
+
+.cta-text {
+    font-size: 1.25rem;
+    font-weight: 500;
+}
+
+.cta_section > img {
+    max-width: 50%;
+    border-radius: 20px;
+}
+/*!SECTION */
+/*SECTION - Werte */
+.values-section {
+    padding: 150px 60px;
+}
+
+.values-section .values-title {
+    font-size: 1.75rem;
+    margin: 15px 0;
+}
+
+.values-section .values-description {
+    font-size: 1.25rem;
+}
+
+.values-section .values-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-top: 50px;
+}
+
+.values-section .value-card {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.values-section .value-card > img {
+    max-width: 85px;
+    max-height: 85px;
+    border-radius: 20px;
+}
+
+.values-section .value-card > h5 {
+    font-size: 1.5rem;
+}
+
+.values-section .value-card > p {
+    font-size: 1rem;
+}
+/*!SECTION */
+/*SECTION - CTA Section 2 */
+.cta_section-2 {
+    background: url('../images/Rectangle\ 22.png');
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: contain;
+    height: 100vh;
+    padding: 0px 60px;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    gap: 60px;
+}
+
+.cta_section-2__content {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    text-align: center;
+}
+
+.cta_section-2__content > h2 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.cta_section-2__content > p {
+    font-size: 1.25rem;
+    font-weight: 500;
+    color: #fff;
+}
+/*!SECTION */
+/*SECTION - Vorbereitung */
+.preparation-section {
+    margin-top: -140px;
+    padding: 80px 60px;
+    background: var(--secondary-color);
+}
+
+.preparation-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 80px;
+}
+
+.vorbereitung > h4 {
+    color: #fff;
+}
+
+.preparation-titel {
+    font-size: 1.75rem;
+    margin: 15px 0;
+    color: #fff;
+}
+
+.preparation-descripton {
+    font-size: 1.25rem;
+    color: #fff;
+}
+/*!SECTION */
+/*SECTION - Features 2 */
+.features-section-2 {
+    padding: 150px 60px;
+}
+
+.features-2-title {
+    font-size: 1.75rem;
+    margin: 15px 0;
+}
+
+.features-2-description {
+    font-size: 1.25rem;
+}
+
+.features-section-2 .features-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-top: 50px;
+}
+
+.features-section-2 .features-card {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.features-section-2 .features-card > img {
+    max-width: 85px;
+    max-height: 85px;
+}
+
+.features-section-2 .features-card > h5 {
+    font-size: 1.5rem;
+}
+
+.features-section-2 .features-cardd > p {
+    font-size: 1rem;
+}
+/*!SECTION */
+/*SECTION - FAQ */
+.faq-container {
+    background: #3E1D23;
+    padding: 80px 60px;
+    font-family: Arial, sans-serif;
+}
+
+.faq-title {
+    font-size: 24px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: #fff;
+}
+
+.faq-description {
+    margin-bottom: 20px;
+    color: #fff;
+    font-size: 16px;
+}
+
+.faq {
+    border-top: 1px solid #fff;
+}
+
+.faq-item {
+    border-bottom: 1px solid #fff;
+    padding: 15px 0;
+}
+
+.faq-question {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.faq-question:hover {
+    color: #fff;
+}
+
+.faq-answer {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.5s linear;
+    padding: 0;
+    color: #fff;
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+
+.faq-icon {
+    font-size: 20px;
+    transition: transform 0.3s ease;
+}
+
+.faq-item.active .faq-icon {
+    transform: rotate(45deg);
+    color: #fff;
+}
+/*!SECTION */
+  
