@@ -1,73 +1,60 @@
 <?php
     session_start();
-    require '../../php/db.php'; 
+    require '../../php/db.php';
 
     ini_set('display_errors', 1);
     error_reporting(E_ALL);
 
+    // Check if the user is logged in
     if (!isset($_SESSION['user'])) {
-        die('Benutzer nicht eingeloggt');
+        header("Location: ../../php/login.php");
+        exit();
     }
 
+    // Check if a trip ID exists
     if (!isset($_SESSION['trip_id'])) {
-        die('Keine Reise-ID gefunden. Bitte die Reise zuerst erstellen.');
+        header("Location: step_1.php");
+        exit();
     }
 
-    $trip_id = $_SESSION['trip_id']; 
+    $trip_id = $_SESSION['trip_id'];
 
-    $stmt = $pdo->prepare("SELECT main_destination, start_location FROM trips WHERE id = ?");
+    $stmt = $pdo->prepare("
+        SELECT destination FROM trips WHERE trip_id = ?
+    ");
     $stmt->execute([$trip_id]);
-    $trip = $stmt->fetch();
+    $main_destination = $stmt->fetchColumn();
 
-    if (!$trip) {
-        die('Fehler: Reise mit der angegebenen ID nicht gefunden.');
-    }
-
-    $main_destination = $trip['main_destination'];
-    $start_location = $trip['start_location'];
-
-    $stmt = $pdo->prepare("SELECT * FROM stopovers WHERE trip_id = ? ORDER BY position ASC");
+    $stmt = $pdo->prepare("
+        SELECT name FROM destinations WHERE trip_id = ? ORDER BY destination_id ASC
+    ");
     $stmt->execute([$trip_id]);
-    $stopovers = $stmt->fetchAll();
+    $stops = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        // NOTE Check whether Starting point changed and saved in the DB
-        if (isset($_POST['start_location']) && $_POST['start_location'] !== $start_location) {
-            $new_start_location = $_POST['start_location'];
-            $stmt_update_start = $pdo->prepare("UPDATE trips SET start_location = ? WHERE id = ?");
-            $stmt_update_start->execute([$new_start_location, $trip_id]);
-        }
+        $start_point = $_POST['start_point'] ?? '';
+        $transport_modes = $_POST['transport_modes'] ?? [];
+        $transport_prices = $_POST['transport_prices'] ?? [];
 
-        // NOTE Checks whether stopovers and means of transport are set
-        if (isset($_POST['stopovers']) && isset($_POST['transport_modes']) && !empty($_POST['stopovers']) && !empty($_POST['transport_modes'])) {
-            $transport_modes = $_POST['transport_modes'];
-            $stopover_ids = $_POST['stopovers']; 
+        // Delete existing transport data
+        $stmt = $pdo->prepare("DELETE FROM transport WHERE trip_id = ?");
+        $stmt->execute([$trip_id]);
 
-            // NOTE Update the sequence of stopovers
-            $position = 1; 
-            $stmt = $pdo->prepare("UPDATE stopovers SET position = ? WHERE trip_id = ? AND location = ?");
-            $stmt->execute([$position, $trip_id, $start_location]);
-
-            $position++; 
-
-            foreach ($stopover_ids as $stopover_id) {
-                if (is_numeric($stopover_id)) {
-                    // NOTE Update the order in the database
-                    $stmt = $pdo->prepare("UPDATE stopovers SET position = ? WHERE id = ?");
-                    $stmt->execute([$position, $stopover_id]);
-                    $position++;
-                }
-            }
-
-            // NOTE Update means of transport
-            foreach ($transport_modes as $stopover_id => $mode) {
-                if (is_numeric($stopover_id) && in_array($mode, ['Zug', 'Auto', 'Flugzeug', 'Schiff'])) {
-                    $stmt = $pdo->prepare("UPDATE stopovers SET transport_mode = ? WHERE id = ?");
-                    $stmt->execute([$mode, $stopover_id]);
-                }
-            }
-        } else {
-            die('Fehler: Keine Transportmittel oder Zwischenstopps ausgewählt.');
+        // Save transport data
+        $locations = array_merge([$start_point], $stops, [$main_destination]);
+        for ($i = 0; $i < count($locations) - 1; $i++) {
+            $stmt = $pdo->prepare("
+                INSERT INTO transport (trip_id, start_location, end_location, mode_of_transport, price, stop_order)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ");
+            $stmt->execute([
+                $trip_id,
+                $locations[$i],
+                $locations[$i + 1],
+                $transport_modes[$i],
+                $transport_prices[$i],
+                $i + 1
+            ]);
         }
 
         header("Location: step_4.php");
@@ -75,209 +62,163 @@
     }
 ?>
 
-
-
-
-
 <!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Schritt 3: Startpunkt, Zwischenstopps und Transportmittel</title>
+    <title>Reiseerstellung - Transport</title>
+    <link rel="stylesheet" href="../../public/assets/css/reset.css">
+    <link rel="stylesheet" href="../../public/assets/css/general.css">
+    <link rel="stylesheet" href="../../public/assets/css/add_trip.css">
     <style>
-        .stopover-field {
-            position: relative;
-            opacity: 1;
-        }
-
-        .moving {
-            transition: transform 0.5s linear, opacity 0.5s linear;
-        }
-
-        .stopover-field.moving-up {
-            transform: translateY(-120%);
-            opacity: 0.5;
-        }
-
-        .stopover-field.moving-down {
-            transform: translateY(120%);
-            opacity: 0.5;
-        }
-
-        .stopover-field.target-up {
-            transform: translateY(-120%);
-            opacity: 1;
-        }
-
-        .stopover-field.target-down {
-            transform: translateY(120%);
-            opacity: 1;
-        }
-
-        .move-buttons button {
-            padding: 5px 10px;
-            margin: 0 5px;
-            font-size: 14px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-
-        .move-buttons button:disabled {
-            background-color: #dcdcdc;
-            cursor: not-allowed;
-        }
-
-        .stopover-field {
-            margin-bottom: 15px;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
             background-color: #f9f9f9;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .section {
+            margin-bottom: 20px;
+            border-left: 4px solid #3498db;
+            padding-left: 10px;
+            padding-top: 10px;
+            padding-bottom: 10px;
+            background: #f4faff;
+            border-radius: 8px;
+        }
+
+        .transport-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+
+        .transport-row label {
+            flex: 1;
+            font-weight: bold;
+            text-align: right;
+        }
+
+        .transport-row select, .transport-row input {
+            flex: 2;
+            padding: 8px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        .divider {
+            height: 2px;
+            background: #ddd;
+            margin: 20px 0;
+        }
+
+        .button-container {
+            text-align: center;
+        }
+
+        button {
+            background-color: #3498db;
+            color: white;
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        a {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            color: #3498db;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
         }
     </style>
 </head>
 <body>
-    <h1>Schritt 3: Bestimmen Sie den Startpunkt, Zwischenstopps und die Transportmittel</h1>
-
-    <form action="step_3.php" method="post">
-        <h2>Startpunkt</h2>
-        <input type="text" name="start_location" required placeholder="Startpunkt eingeben" value="<?php echo htmlspecialchars($start_location, ENT_QUOTES); ?>">
-
-        <h2>Hauptziel</h2>
-        <input type="text" name="main_destination" required placeholder="Hauptziel eingeben" value="<?php echo htmlspecialchars($main_destination, ENT_QUOTES); ?>" readonly>
-
-        <h2>Zwischenstopps und Transportmittel</h2>
-        <div id="stopover-fields">
-            <div class="first-field">
-                <label for="transport_0">Transportmittel vom Startpunkt zum ersten Zwischenstopp:</label>
-                <select name="transport_modes[0]" id="transport_0">
-                    <option value="Zug">Zug</option>
-                    <option value="Auto">Auto</option>
-                    <option value="Flugzeug">Flugzeug</option>
-                    <option value="Schiff">Schiff</option>
-                </select>
+    <div class="container">
+        <h1>Reiseerstellung - Transport</h1>
+        <form method="POST">
+            <div class="section">
+                <h3>Startpunkt</h3>
+                <div class="transport-row">
+                    <label for="start_point">Von:</label>
+                    <input type="text" name="start_point" id="start_point" placeholder="Startpunkt" required>
+                </div>
             </div>
 
-            <h3>Zwischenstopps:</h3>
-            <?php if ($stopovers): ?>
-                <?php foreach ($stopovers as $index => $stopover): ?>
-                    <div class="stopover-field" id="changeorder" data-id="<?php echo $stopover['id']; ?>">
-                        <label for="stopover_<?php echo $stopover['id']; ?>">Von</label>
-                        <input type="text" name="stopovers[<?php echo $stopover['id']; ?>]" value="<?php echo htmlspecialchars($stopover['location'], ENT_QUOTES); ?>" readonly>
-
-                        <label for="transport_<?php echo $stopover['id']; ?>"> zum nächsten Ziel mit:</label>
-                        <select name="transport_modes[<?php echo $stopover['id']; ?>]" id="transport_<?php echo $stopover['id']; ?>">
-                            <option value="Zug" <?php echo ($stopover['transport_mode'] == 'Zug') ? 'selected' : ''; ?>>Zug</option>
-                            <option value="Auto" <?php echo ($stopover['transport_mode'] == 'Auto') ? 'selected' : ''; ?>>Auto</option>
-                            <option value="Flugzeug" <?php echo ($stopover['transport_mode'] == 'Flugzeug') ? 'selected' : ''; ?>>Flugzeug</option>
-                            <option value="Schiff" <?php echo ($stopover['transport_mode'] == 'Schiff') ? 'selected' : ''; ?>>Schiff</option>
-                        </select>
-
-                        <div class="move-buttons">
-                            <button type="button" class="move-up" onclick="moveStopoverUp(<?php echo $stopover['id']; ?>)">↑</button>
-                            <button type="button" class="move-down" onclick="moveStopoverDown(<?php echo $stopover['id']; ?>)">↓</button>
+            <?php if (!empty($stops)): ?>
+                <div class="divider"></div>
+                <div class="section">
+                    <h3>Zwischenstopps</h3>
+                    <?php foreach ($stops as $index => $stop): ?>
+                        <div class="transport-row">
+                            <label>Von: <?php echo $index === 0 ? 'Startpunkt' : htmlspecialchars($stops[$index - 1]); ?></label>
+                            <label>Nach: <?php echo htmlspecialchars($stop); ?></label>
+                            <select name="transport_modes[]" required>
+                                <option value="Zug">Zug</option>
+                                <option value="Auto">Auto</option>
+                                <option value="Flugzeug">Flugzeug</option>
+                                <option value="Bus">Bus</option>
+                                <option value="Sonstige">Sonstige</option>
+                            </select>
+                            <input type="number" name="transport_prices[]" placeholder="Preis in CHF" required>
                         </div>
-                    </div>
-                <?php endforeach; ?>
-            <?php else: ?>
-                <p>Es wurden keine Zwischenstopps festgelegt.</p>
+                    <?php endforeach; ?>
+                </div>
             <?php endif; ?>
 
-            <div class="last-field">
-                <label for="transport_last">Transportmittel vom letzten Zwischenstopp zum Hauptziel:</label>
-                <select name="transport_modes[last]" id="transport_last">
-                    <option value="Zug">Zug</option>
-                    <option value="Auto">Auto</option>
-                    <option value="Flugzeug">Flugzeug</option>
-                    <option value="Schiff">Schiff</option>
-                </select>
+            <div class="divider"></div>
+            <div class="section">
+                <h3>Hauptziel</h3>
+                <div class="transport-row">
+                    <label>Von: <?php echo !empty($stops) ? htmlspecialchars(end($stops)) : 'Startpunkt'; ?></label>
+                    <label>Nach: <?php echo htmlspecialchars($main_destination); ?></label>
+                    <select name="transport_modes[]" required>
+                        <option value="Zug">Zug</option>
+                        <option value="Auto">Auto</option>
+                        <option value="Flugzeug">Flugzeug</option>
+                        <option value="Bus">Bus</option>
+                        <option value="Sonstige">Sonstige</option>
+                    </select>
+                    <input type="number" name="transport_prices[]" placeholder="Preis in CHF" required>
+                </div>
             </div>
-        </div>
-        <br><br>
-        <button type="submit">Weiter</button>
-    </form>
 
-    <script>
-        function moveStopoverUp(id) {
-            const stopovers = document.querySelectorAll('.stopover-field');
-            let currentIndex = Array.from(stopovers).findIndex(stopover => stopover.getAttribute('data-id') === String(id));
-
-            if (currentIndex > 0) {
-                const currentStopover = stopovers[currentIndex];
-                const previousStopover = stopovers[currentIndex - 1];
-
-                previousStopover.classList.add('moving');
-                currentStopover.classList.add('moving');
-                currentStopover.classList.add('moving-up');
-                previousStopover.classList.add('target-down');
-                
-
-                setTimeout(() => {
-                    currentStopover.parentNode.insertBefore(currentStopover, previousStopover);
-
-                    currentStopover.classList.remove('moving-up');
-                    previousStopover.classList.remove('target-down');
-                    previousStopover.classList.remove('moving');
-                    currentStopover.classList.remove('moving');
-
-                    updateStopoverOrder();
-                    updateArrowButtons();
-                }, 500); 
-            }
-        }
-
-        function moveStopoverDown(id) {
-            const stopovers = document.querySelectorAll('.stopover-field');
-            let currentIndex = Array.from(stopovers).findIndex(stopover => stopover.getAttribute('data-id') === String(id));
-
-            if (currentIndex < stopovers.length - 1) {
-                const currentStopover = stopovers[currentIndex];
-                const nextStopover = stopovers[currentIndex + 1];
-
-                nextStopover.classList.add('moving');
-                currentStopover.classList.add('moving');
-                currentStopover.classList.add('moving-down');
-                nextStopover.classList.add('target-up');
-
-                setTimeout(() => {
-                    currentStopover.parentNode.insertBefore(nextStopover, currentStopover);
-
-                    currentStopover.classList.remove('moving-down');
-                    nextStopover.classList.remove('target-up');
-                    nextStopover.classList.remove('moving');
-                    currentStopover.classList.remove('moving');
-
-                    updateStopoverOrder();
-                    updateArrowButtons();
-                }, 500); 
-            }
-        }
-
-        function updateStopoverOrder() {
-            const stopovers = document.querySelectorAll('.stopover-field');
-            stopovers.forEach((stopover, index) => {
-                const stopoverInput = stopover.querySelector('input');
-                stopoverInput.setAttribute('name', `stopovers[${stopover.dataset.id}]`);
-            });
-        }
-
-        function updateArrowButtons() {
-            const stopovers = document.querySelectorAll('.stopover-field');
-            stopovers.forEach((stopover, index) => {
-                const upButton = stopover.querySelector('.move-up');
-                const downButton = stopover.querySelector('.move-down');
-
-                upButton.disabled = index === 0;
-
-                downButton.disabled = index === stopovers.length - 1;
-            });
-        }
-
-        document.addEventListener('DOMContentLoaded', updateArrowButtons);
-    </script>
+            <div class="button-container">
+                <button type="submit">Weiter</button>
+            </div>
+        </form>
+        <a href="step_2.php">Zurück</a>
+    </div>
 </body>
 </html>
+
+

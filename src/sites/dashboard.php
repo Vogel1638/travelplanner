@@ -1,30 +1,59 @@
 <?php
-session_start();
-require '../php/db.php'; 
+    session_start();
+    require '../php/db.php'; 
 
-// NOTE Check whether the user is logged in
-if (!isset($_SESSION['user'])) {
-    header("Location: ../php/login.php");
-    exit();
-}
+    // Check whether the user is logged in
+    if (!isset($_SESSION['user'])) {
+        header("Location: ../php/login.php");
+        exit();
+    }
 
-$user_email = $_SESSION['user'];
+    $user_email = $_SESSION['user'];
 
-// NOTE Retrieving the user ID from the database
-$stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
-$stmt->execute([$user_email]);
-$user = $stmt->fetch();
+    // Retrieving the user ID from the database
+    $stmt = $pdo->prepare("SELECT user_id FROM users WHERE email = ?");
+    $stmt->execute([$user_email]);
+    $user = $stmt->fetch();
 
-if (!$user) {
-    die("Benutzer nicht gefunden.");
-}
+    if (!$user) {
+        die("Benutzer nicht gefunden.");
+    }
 
-$user_id = $user['id'];
+    $user_id = $user['user_id'];
 
-// NOTE Travelling of the user
-$stmt = $pdo->prepare("SELECT * FROM trips WHERE user_id = ?");
-$stmt->execute([$user_id]);
-$trips = $stmt->fetchAll();
+    // Retrieve trips of the user
+    $stmt = $pdo->prepare("
+        SELECT trips.trip_id, trips.trip_title, trips.start_date, trips.end_date, trips.budget AS max_budget, trips.destination AS main_destination,
+            (SELECT SUM(amount) FROM budgets WHERE budgets.trip_id = trips.trip_id) AS budget_used
+        FROM trips
+        WHERE trips.user_id = ?
+    ");
+    $stmt->execute([$user_id]);
+    $trips = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Retrieve overall budget overview
+    $totalBudgetStmt = $pdo->prepare("SELECT SUM(budget) AS total_budget FROM trips WHERE user_id = ?");
+    $totalBudgetStmt->execute([$user_id]);
+    $totalBudget = $totalBudgetStmt->fetchColumn();
+
+    $totalSpentStmt = $pdo->prepare("
+        SELECT SUM(amount) AS total_spent 
+        FROM budgets 
+        WHERE trip_id IN (SELECT trip_id FROM trips WHERE user_id = ?)
+    ");
+    $totalSpentStmt->execute([$user_id]);
+    $totalSpent = $totalSpentStmt->fetchColumn();
+
+    // Retrieve all To-Dos
+    $todosStmt = $pdo->prepare("
+        SELECT todos.title, todos.description, todos.due_date, todos.completed, trips.trip_title
+        FROM todos
+        INNER JOIN trips ON todos.trip_id = trips.trip_id
+        WHERE trips.user_id = ?
+        ORDER BY todos.due_date ASC
+    ");
+    $todosStmt->execute([$user_id]);
+    $todos = $todosStmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
@@ -77,17 +106,16 @@ $trips = $stmt->fetchAll();
         }
 
         .hero {
-            margin-top: 70px;
-            padding: 50px 20px;
-            background-image: url('../assets/images/hero.jpg');
+            background-image: url('../../public/assets/images/beach.jpg');
             background-size: cover;
             background-position: center;
             color: white;
             text-align: center;
+            padding: 100px 20px;
         }
 
         .hero h1 {
-            font-size: 36px;
+            font-size: 2.5rem;
         }
 
         .trip-cards {
@@ -161,16 +189,17 @@ $trips = $stmt->fetchAll();
     <p>Verwalte deine Reisen, Budgets, To-Dos und mehr.</p>
 </div>
 
+<!-- Trip Cards Section -->
 <div class="trip-cards">
     <?php if (empty($trips)): ?>
         <p class="no-trips-message">Bis jetzt keine Reisen erstellt.</p>
     <?php else: ?>
         <?php foreach ($trips as $trip): ?>
             <?php
-                $budget_percentage = $trip['max_budget'] > 0 ? ($trip['max_budget'] / 100) * 100 : 0;
+                $budget_percentage = $trip['max_budget'] > 0 ? ($trip['budget_used'] / $trip['max_budget']) * 100 : 0;
             ?>
             <div class="trip-card">
-                <h3><?php echo htmlspecialchars($trip['title']); ?></h3>
+                <h3><?php echo htmlspecialchars($trip['trip_title']); ?></h3>
                 <p><strong>Zielort:</strong> <?php echo htmlspecialchars($trip['main_destination']); ?></p>
                 <p><strong>Datum:</strong> <?php echo date('d.m.Y', strtotime($trip['start_date'])) . ' - ' . date('d.m.Y', strtotime($trip['end_date'])); ?></p>
 
@@ -178,16 +207,46 @@ $trips = $stmt->fetchAll();
                     <span style="width: <?php echo $budget_percentage; ?>%; background-color: <?php echo $budget_percentage >= 75 ? 'red' : ($budget_percentage >= 50 ? 'orange' : 'green'); ?>;"></span>
                 </div>
                 <p>Budget: <?php echo number_format($trip['max_budget'], 2, ',', '.'); ?> €</p>
+                <p>Ausgegeben: <?php echo number_format($trip['budget_used'] ?? 0, 2, ',', '.'); ?> €</p>
 
                 <div class="icons">
-                    <a href="trip_details.php?trip_id=<?php echo $trip['id']; ?>" title="Detailansicht">&#128065;</a>
-                    <a href="trip_edit.php?trip_id=<?php echo $trip['id']; ?>" title="Bearbeiten">&#9998;</a>
-                    <a href="trip_delete.php?trip_id=<?php echo $trip['id']; ?>" title="Löschen" onclick="return confirm('Bist du sicher, dass du diese Reise löschen möchtest?')">&#128465;</a>
+                    <a href="trip_details.php?trip_id=<?php echo $trip['trip_id']; ?>" title="Detailansicht">&#128065;</a>
+                    <a href="trip_edit.php?trip_id=<?php echo $trip['trip_id']; ?>" title="Bearbeiten">&#9998;</a>
+                    <a href="trip_delete.php?trip_id=<?php echo $trip['trip_id']; ?>" title="Löschen" onclick="return confirm('Bist du sicher, dass du diese Reise löschen möchtest?')">&#128465;</a>
                 </div>
             </div>
         <?php endforeach; ?>
     <?php endif; ?>
 </div>
+
+<!-- General Budget Overview Section -->
+<section>
+    <h2>Allgemeine Budgetübersicht</h2>
+    <p><strong>Gesamtbudget:</strong> <?php echo number_format($totalBudget, 2, ',', '.'); ?> €</p>
+    <p><strong>Gesamtausgaben:</strong> <?php echo number_format($totalSpent ?? 0, 2, ',', '.'); ?> €</p>
+    <p><strong>Verfügbar:</strong> <?php echo number_format(($totalBudget - $totalSpent) ?? 0, 2, ',', '.'); ?> €</p>
+</section>
+
+<!-- To-Dos Section -->
+<section>
+    <h2>To-Dos</h2>
+    <div class="todo-list">
+        <?php if (!empty($todos)): ?>
+            <ul>
+                <?php foreach ($todos as $todo): ?>
+                    <li>
+                        <h3><?php echo htmlspecialchars($todo['title']); ?> (<?php echo htmlspecialchars($todo['trip_title']); ?>)</h3>
+                        <p><?php echo htmlspecialchars($todo['description']); ?></p>
+                        <p><strong>Fällig:</strong> <?php echo date('d.m.Y', strtotime($todo['due_date'])); ?></p>
+                        <p><strong>Status:</strong> <?php echo $todo['completed'] ? 'Erledigt' : 'Offen'; ?></p>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        <?php else: ?>
+            <p>Keine To-Dos vorhanden.</p>
+        <?php endif; ?>
+    </div>
+</section>
 
 </body>
 </html>

@@ -1,0 +1,6 @@
+# Sicherstellen, dass RewriteEngine aktiviert ist
+RewriteEngine On
+
+# RewriteRule für travelplanner
+RewriteCond %{REQUEST_URI} ^/travelplanner/?$
+RewriteRule ^ /travelplanner/public/index.html [L,R=301]

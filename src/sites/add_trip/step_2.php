@@ -2,41 +2,50 @@
     session_start();
     require '../../php/db.php';
 
+    ini_set('display_errors', 1);
+    error_reporting(E_ALL);
+
+    // Check if the user is logged in
     if (!isset($_SESSION['user'])) {
-        die('Benutzer nicht eingeloggt');
+        header("Location: ../../php/login.php");
+        exit();
     }
 
+    // Check if a trip ID exists
     if (!isset($_SESSION['trip_id'])) {
-        die('Keine Reise-ID gefunden. Bitte die Reise zuerst erstellen.');
+        header("Location: step_1.php");
+        exit();
     }
 
-    $trip_id = $_SESSION['trip_id']; 
+    $trip_id = $_SESSION['trip_id'];
 
+    // Process main destination and stopovers
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        if (isset($_POST['delete_stopover_id'])) {
-            // NOTE Deleting a stopover
-            $stopover_id = $_POST['delete_stopover_id'];
-            $stmt = $pdo->prepare("DELETE FROM stopovers WHERE id = ?");
-            $stmt->execute([$stopover_id]);
-        } else {
-            // NOTE Saving the main destination and stopovers
-            $main_destination = $_POST['main_destination']; 
-            $stopover_locations = $_POST['stopover_locations'];
+        $main_destination = $_POST['main_destination'] ?? '';
+        $stops = $_POST['stops'] ?? [];
 
-            $stmt = $pdo->prepare("UPDATE trips SET main_destination = ? WHERE id = ?");
+        // Validation
+        if (empty($main_destination)) {
+            $error_message = "Bitte geben Sie ein Hauptziel ein.";
+        } else {
+            $stmt = $pdo->prepare("UPDATE trips SET destination = ? WHERE trip_id = ?");
             $stmt->execute([$main_destination, $trip_id]);
 
-            $stmt = $pdo->prepare("DELETE FROM stopovers WHERE trip_id = ?");
+
+            $stmt = $pdo->prepare("DELETE FROM destinations WHERE trip_id = ?");
             $stmt->execute([$trip_id]);
 
-            foreach ($stopover_locations as $index => $location) {
-                $stmt = $pdo->prepare("INSERT INTO stopovers (trip_id, location, position) VALUES (?, ?, ?)");
-                $stmt->execute([$trip_id, $location, $index + 1]);  
-            }
-        }
 
-        header("Location: step_3.php");
-        exit();
+            foreach ($stops as $stop) {
+                if (!empty($stop)) {
+                    $stmt = $pdo->prepare("INSERT INTO destinations (trip_id, name) VALUES (?, ?)");
+                    $stmt->execute([$trip_id, $stop]);
+                }
+            }
+
+            header("Location: step_3.php");
+            exit();
+        }
     }
 ?>
 
@@ -45,49 +54,126 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Schritt 2: Zwischenstopps und Hauptziel</title>
+    <title>Reiseerstellung - Schritt 2</title>
+    <link rel="stylesheet" href="../../public/assets/css/reset.css">
+    <link rel="stylesheet" href="../../public/assets/css/general.css">
+    <link rel="stylesheet" href="../../public/assets/css/add_trip.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f9f9f9;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        label {
+            font-weight: bold;
+        }
+
+        input, button {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        .error {
+            color: red;
+            font-size: 14px;
+        }
+
+        .stops-list {
+            margin-top: 10px;
+        }
+
+        .stops-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .stops-list input {
+            flex: 1;
+            margin-right: 10px;
+        }
+
+        .stops-list button {
+            background-color: red;
+            color: white;
+            border: none;
+            padding: 5px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+    </style>
+    <script>
+        function addStop() {
+            const stopsList = document.getElementById('stops-list');
+            const newStop = document.createElement('li');
+
+            newStop.innerHTML = `
+                <input type="text" name="stops[]" placeholder="Zwischenstopp">
+                <button type="button" onclick="removeStop(this)">Entfernen</button>
+            `;
+            stopsList.appendChild(newStop);
+        }
+
+        function removeStop(button) {
+            const li = button.parentElement;
+            li.remove();
+        }
+    </script>
 </head>
 <body>
-    <h1>Schritt 2: Bestimmen Sie Ihr Hauptziel und die Zwischenstopps</h1>
+    <div class="container">
+        <h1>Reiseerstellung - Schritt 2</h1>
+        <?php if (!empty($error_message)): ?>
+            <p class="error"><?php echo htmlspecialchars($error_message); ?></p>
+        <?php endif; ?>
+        <form method="POST">
+            <label for="main_destination">Hauptziel:</label>
+            <input type="text" name="main_destination" id="main_destination" placeholder="z.B. Paris" required>
 
-    <form action="step_2.php" method="post">
-        <h2>Hauptziel</h2>
-        <input type="text" name="main_destination" required placeholder="Hauptziel eingeben" value="<?php echo htmlspecialchars($main_destination ?? '', ENT_QUOTES); ?>">
+            <label>Zwischenstopps:</label>
+            <ul id="stops-list" class="stops-list">
+            </ul>
+            <button type="button" onclick="addStop()">Zwischenstopp hinzufügen</button>
 
-        <h2>Zwischenstopps</h2>
-        <div id="stopover-fields">
-            <?php if ($stopovers): ?>
-                <?php foreach ($stopovers as $stopover): ?>
-                    <div class="stopover-field" id="stopover_<?php echo $stopover['id']; ?>">
-                        <label for="stopover_<?php echo $stopover['id']; ?>">Zwischenstopp <?php echo $stopover['position']; ?>:</label>
-                        <input type="text" name="stopover_locations[]" required placeholder="Ort hinzufügen" value="<?php echo htmlspecialchars($stopover['location'], ENT_QUOTES); ?>">
-                        <button type="submit" name="delete_stopover_id" value="<?php echo $stopover['id']; ?>">Löschen</button>
-                    </div>
-                <?php endforeach; ?>
-            <?php else: ?>
-                <div class="stopover-field">
-                    <label for="stopover_1">Zwischenstopp 1:</label>
-                    <input type="text" name="stopover_locations[]" required placeholder="Ort hinzufügen">
-                </div>
-            <?php endif; ?>
-        </div>
-
-        <button type="button" id="add-stopover">Weiteren Zwischenstopp hinzufügen</button>
-        <br><br>
-        <button type="submit">Weiter</button>
-    </form>
-
-    <script>
-        document.getElementById('add-stopover').addEventListener('click', function() {
-            var stopoverFields = document.getElementById('stopover-fields');
-            var newStopoverField = document.createElement('div');
-            newStopoverField.classList.add('stopover-field');
-            newStopoverField.innerHTML = `
-                <label for="stopover_${stopoverFields.children.length + 1}">Zwischenstopp ${stopoverFields.children.length + 1}:</label>
-                <input type="text" name="stopover_locations[]" required placeholder="Ort hinzufügen">
-            `;
-            stopoverFields.appendChild(newStopoverField);
-        });
-    </script>
+            <button type="submit">Weiter</button>
+        </form>
+        <a href="step_1.php" style="display: block; margin-top: 20px; text-align: center;">Zurück</a>
+    </div>
 </body>
 </html>

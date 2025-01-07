@@ -1,56 +1,65 @@
 <?php
     session_start();
-    require '../../php/db.php'; 
+    require '../../php/db.php';
 
     ini_set('display_errors', 1);
     error_reporting(E_ALL);
 
+    // Check if the user is logged in
     if (!isset($_SESSION['user'])) {
-        die('Benutzer nicht eingeloggt');
+        header("Location: ../../php/login.php");
+        exit();
     }
 
-    $user_email = $_SESSION['user'];
-    $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
-    $stmt->execute([$user_email]);
-    $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if ($user) {
-        $user_id = $user['id'];
-    } else {
-        die('Benutzer existiert nicht in der Datenbank');
+    // Check if a trip ID exists
+    if (!isset($_SESSION['trip_id'])) {
+        header("Location: step_1.php");
+        exit();
     }
 
     $trip_id = $_SESSION['trip_id'];
 
-    // NOTE Travel information
-    $stmt_trip = $pdo->prepare("SELECT * FROM trips WHERE id = ?");
-    $stmt_trip->execute([$trip_id]);
-    $trip = $stmt_trip->fetch();
+    // Retrieve destinations
+    $stmt = $pdo->prepare("SELECT destination AS location FROM trips WHERE trip_id = ?
+        UNION ALL
+        SELECT name AS location FROM destinations WHERE trip_id = ?");
+    $stmt->execute([$trip_id, $trip_id]);
+    $locations = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-    // NOTE Main destination and stopovers
-    $stmt_stopovers = $pdo->prepare("SELECT * FROM stopovers WHERE trip_id = ? ORDER BY position");
-    $stmt_stopovers->execute([$trip_id]);
-    $stopovers = $stmt_stopovers->fetchAll();
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $titles = $_POST['titles'] ?? [];
+        $dates = $_POST['dates'] ?? [];
+        $descriptions = $_POST['descriptions'] ?? [];
+        $tags = $_POST['tags'] ?? [];
+        $priorities = $_POST['priorities'] ?? [];
+        $locations = $_POST['locations'] ?? [];
 
-    // NOTE Types of transport
-    $stmt_transport = $pdo->prepare("SELECT transport_mode FROM stopovers WHERE trip_id = ?");
-    $stmt_transport->execute([$trip_id]);
-    $transport_modes = $stmt_transport->fetchAll(PDO::FETCH_COLUMN);
+        // Delete existing to-dos
+        $stmt = $pdo->prepare("DELETE FROM todos WHERE trip_id = ?");
+        $stmt->execute([$trip_id]);
 
-    // NOTE Hotel overview
-    $stmt_hotels = $pdo->prepare("SELECT location, hotel, nights FROM stopovers WHERE trip_id = ?");
-    $stmt_hotels->execute([$trip_id]);
-    $hotels = $stmt_hotels->fetchAll();
+        // Save new to-dos
+        foreach ($titles as $index => $title) {
+            if (!empty($title)) {
+                $stmt = $pdo->prepare("
+                    INSERT INTO todos (trip_id, location, title, due_date, description, tags, priority) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ");
+                $stmt->execute([
+                    $trip_id,
+                    $locations[$index],
+                    $title,
+                    $dates[$index],
+                    $descriptions[$index],
+                    $tags[$index],
+                    $priorities[$index]
+                ]);
+            }
+        }
 
-    // NOTE Daily activities
-    $stmt_activities = $pdo->prepare("SELECT * FROM activities WHERE trip_id = ? ORDER BY day_date");
-    $stmt_activities->execute([$trip_id]);
-    $activities = $stmt_activities->fetchAll();
-
-    // NOTE ToDo
-    $stmt_todos = $pdo->prepare("SELECT * FROM todos WHERE trip_id = ? ORDER BY deadline");
-    $stmt_todos->execute([$trip_id]);
-    $todos = $stmt_todos->fetchAll();
+        header("Location: summary.php");
+        exit();
+    }
 ?>
 
 <!DOCTYPE html>
@@ -58,241 +67,268 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reiseplanung - Schritt 7</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
-
+    <title>To-Dos erstellen</title>
+    <link rel="stylesheet" href="../../public/assets/css/reset.css">
+    <link rel="stylesheet" href="../../public/assets/css/general.css">
+    <link rel="stylesheet" href="../../public/assets/css/add_trip.css">
     <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 50px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 20px;
+            color: #343a40;
+        }
+
         .tabs {
             display: flex;
-            flex-direction: column;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
         }
 
-        .tab-titles {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-            display: flex;
-        }
-
-        .tab-titles li {
-            flex: 1;
-            padding: 10px;
-            background: #f4f4f4;
-            text-align: center;
-            cursor: pointer;
-            transition: background 0.3s ease;
-        }
-
-        .tab-titles li.active {
-            background: #4CAF50;
+        .tabs button {
+            background-color: #007bff;
             color: white;
-            font-weight: bold;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
         }
 
-        .tab-content {
+        .tabs button:hover,
+        .tabs button.active {
+            background-color: #0056b3;
+        }
+
+        .content {
             display: none;
-            padding: 15px;
-            background: #f9f9f9;
-            border-top: 2px solid #ccc;
         }
 
-        .tab-content.active {
+        .content.active {
             display: block;
         }
 
-        .tab-content h3 {
-            margin-top: 0;
+        .add-todo-container {
+            text-align: left;
+            margin-bottom: 20px;
         }
 
-        .hotel-card {
-        background: #fff;
-        border: 1px solid #ddd;
-        padding: 15px;
-        margin-bottom: 15px;
-        border-radius: 5px;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    }
-
-    .hotel-card h5, .hotel-card h4 {
-        margin-top: 0;
-        color: #4CAF50;
-    }
-
-    .main-destination {
-        background: #f9f9f9;
-        border: 2px solid #4CAF50;
-    }
-
-    .stopover-hotels h4 {
-        margin-bottom: 15px;
-        color: #333;
-    }
-
-    .stopover-hotels p {
-        color: #555;
-    }
-
-    @media (max-width: 600px) {
-        .hotel-card {
-            padding: 10px;
-            font-size: 0.9em;
+        .add-todo-container button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
         }
-    }
-</style>
+
+        .add-todo-container button:hover {
+            background-color: #0056b3;
+        }
+
+        .todo-card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .todo-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+        }
+
+        .todo-checkbox {
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+
+        .todo-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            width: 100%;
+        }
+
+        .todo-header h3 {
+            margin: 0;
+            font-size: 1.5rem;
+            color: #343a40;
+        }
+
+        .todo-header .priority {
+            padding: 5px 10px;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            color: white;
+        }
+
+        .priority-low {
+            background-color: #28a745;
+        }
+
+        .priority-medium {
+            background-color: #ffc107;
+        }
+
+        .priority-high {
+            background-color: #dc3545;
+        }
+
+        .todo-body {
+            margin-top: 10px;
+            font-size: 1rem;
+            color: #495057;
+        }
+
+        .todo-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        .tag {
+            background: #e9ecef;
+            color: #495057;
+            padding: 5px 10px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+        }
+
+        .todo-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .todo-footer button {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .todo-footer button:hover {
+            background-color: #bd2130;
+        }
     </style>
+    <script>
+        function switchTab(tabId) {
+            const tabs = document.querySelectorAll('.content');
+            tabs.forEach(tab => tab.classList.remove('active'));
 
+            const activeTab = document.getElementById(tabId);
+            activeTab.classList.add('active');
+
+            const buttons = document.querySelectorAll('.tabs button');
+            buttons.forEach(button => button.classList.remove('active'));
+
+            document.querySelector(`button[data-tab="${tabId}"]`).classList.add('active');
+        }
+
+        function addTodo(location) {
+            const container = document.getElementById(`todos-${location}`);
+            const todoCard = document.createElement('div');
+            todoCard.classList.add('todo-card');
+
+            todoCard.innerHTML = `
+                <input type="checkbox" class="todo-checkbox">
+                <div style="flex-grow: 1;">
+                    <div class="todo-header">
+                        <h3><input type="text" name="titles[]" placeholder="Titel" required></h3>
+                        <select name="priorities[]" required>
+                            <option value="Low" class="priority-low">Niedrig</option>
+                            <option value="Medium" class="priority-medium">Mittel</option>
+                            <option value="High" class="priority-high">Hoch</option>
+                        </select>
+                    </div>
+                    <div class="todo-body">
+                        <input type="date" name="dates[]" required>
+                        <textarea name="descriptions[]" placeholder="Beschreibung (optional)" rows="2"></textarea>
+                    </div>
+                    <div class="todo-tags">
+                        <input type="text" name="tags[]" placeholder="Tags (optional)">
+                    </div>
+                    <div class="todo-footer">
+                        <button type="button" onclick="removeTodo(this)">Entfernen</button>
+                    </div>
+                </div>
+            `;
+            container.prepend(todoCard);
+        }
+
+        function removeTodo(button) {
+            const todoCard = button.parentElement.parentElement.parentElement;
+            todoCard.remove();
+        }
+    </script>
 </head>
 <body>
-    <div class="tabs">
-        <ul class="tab-titles">
-            <li class="active" data-tab="reiseinfo">Reiseinformationen</li>
-            <li data-tab="hauptziel">Hauptziel und Zwischenstopps</li>
-            <li data-tab="transport">Transportarten</li>
-            <li data-tab="hotels">Hotelübersicht</li>
-            <li data-tab="activities">Tagesaktivitäten</li>
-            <li data-tab="todos">ToDo Übersicht</li>
-        </ul>
-
-        <div class="tab-content" id="reiseinfo">
-            <h3>Reiseinformationen</h3>
-            <p><strong>Titel:</strong> <?= $trip['title'] ?></p>
-            
-            <?php
-                $start_date = new DateTime($trip['start_date']);
-                $end_date = new DateTime($trip['end_date']);
-            ?>
-            <p><strong>Startdatum:</strong> <?= $start_date->format('d.m.Y') ?></p>
-            <p><strong>Enddatum:</strong> <?= $end_date->format('d.m.Y') ?></p>
-            <p><strong>Budget:</strong> <?= $trip['max_budget'] ?> CHF</p>
-            <p><strong>Teilnehmer:</strong> <?= $trip['participants'] ?></p>
+    <div class="container">
+        <h1>To-Dos erstellen</h1>
+        <div class="tabs">
+            <button class="active" data-tab="general-tab" onclick="switchTab('general-tab')">Allgemein</button>
+            <?php foreach ($locations as $location): ?>
+                <button data-tab="<?php echo htmlspecialchars($location); ?>-tab" onclick="switchTab('<?php echo htmlspecialchars($location); ?>-tab')">
+                    <?php echo htmlspecialchars($location); ?>
+                </button>
+            <?php endforeach; ?>
         </div>
 
-
-        <div class="tab-content" id="hauptziel">
-            <h3>Hauptziel und Zwischenstopps</h3>
-            <p><strong>Hauptziel:</strong> <?= $trip['main_destination'] ?></p>
-            <h4>Zwischenstopps:</h4>
-            <ul>
-                <?php foreach ($stopovers as $stopover): ?>
-                    <li><?= $stopover['location'] ?></li>
-                <?php endforeach; ?>
-            </ul>
-        </div>
-
-
-        <div class="tab-content" id="transport">
-            <h3>Transportarten zwischen den Stopps</h3>
-            <ul>
-                <?php
-                $start_location = $trip['start_location']; 
-
-                if (count($stopovers) > 0) {
-                    $loop_counter = 0;
-                    $previous_location = $start_location;
-                    
-                    // NOTE Transport from the starting point to the stopovers
-                    foreach ($stopovers as $stopover) {
-                        if (isset($stopover['location']) && isset($transport_modes[$loop_counter])) {
-                            $transport_mode = $transport_modes[$loop_counter];
-                            
-                            echo "<li>Von $previous_location nach " . $stopover['location'] . " mit: $transport_mode</li>";
-
-                            $previous_location = $stopover['location'];
-                        }
-                        $loop_counter++;
-                    }
-
-                    // NOTE From the last stopover to the main destination
-                    if (isset($transport_modes[$loop_counter])) {
-                        $transport_mode = $transport_modes[$loop_counter];
-                        echo "<li>Von " . $previous_location . " nach " . $trip['main_destination'] . " mit: $transport_mode</li>";
-                    } else {
-                        // NOTE No means of transport available for the last section
-                        echo "<li>Kein Transportmittel angegeben von " . $previous_location . " nach " . $trip['main_destination'] . "</li>";
-                    }
-                } else {
-                    // NOTE No intermediate stops available
-                    if (isset($transport_modes[$loop_counter])) {
-                        $transport_mode = $transport_modes[$loop_counter]; 
-                        echo "<li>Von $start_location nach " . $trip['main_destination'] . " mit: $transport_mode</li>";
-                    } else {
-                        echo "<li>Kein Transportmittel angegeben von $start_location nach " . $trip['main_destination'] . "</li>";
-                    }
-                }
-                ?>
-            </ul>
-        </div>
-
-        <div class="tab-content" id="hotels">
-            <h3>Hotelübersicht</h3>
-            <div class="hotel-card main-destination">
-                <h4><i class="fas fa-map-marker-alt"></i> Hauptziel Hotel:</h4>
-                <p><strong>Ort:</strong> <?= $trip['main_destination'] ?></p>
-                <?php if (!empty($trip['hotel'])): ?>
-                    <p><strong>Hotel:</strong> <?= $trip['hotel'] ?></p>
-                    <p><strong>Übernachtungen:</strong> <?= $trip['nights'] ?></p>
-                <?php else: ?>
-                    <p><em>Kein Hotel angegeben.</em></p>
-                <?php endif; ?>
+        <form method="POST">
+            <div id="general-tab" class="content active">
+                <div class="add-todo-container">
+                    <button type="button" onclick="addTodo('General')">+ To-Do hinzufügen</button>
+                </div>
+                <div id="todos-General"></div>
             </div>
 
-            <div class="stopover-hotels">
-                <h4>Hotels in Zwischenstopps:</h4>
-                <?php if (!empty($hotels)): ?>
-                    <?php foreach ($stopovers as $stopover): ?>
-                        <div class="hotel-card">
-                            <h5><i class="fas fa-bed"></i> <?= $stopover['location'] ?></h5>
-                            <?php 
-                                $hotel = array_filter($hotels, fn($h) => $h['location'] === $stopover['location']);
-                                if (!empty($hotel)):
-                                    $hotel = array_values($hotel)[0];
-                            ?>
-                                <p><strong>Hotel:</strong> <?= $hotel['hotel'] ?></p>
-                                <p><strong>Übernachtungen:</strong> <?= $hotel['nights'] ?></p>
-                            <?php else: ?>
-                                <p><em>Kein Hotel angegeben.</em></p>
-                            <?php endif; ?>
-                        </div>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <p><em>Keine Zwischenstopps vorhanden.</em></p>
-                <?php endif; ?>
+            <?php foreach ($locations as $location): ?>
+                <div id="<?php echo htmlspecialchars($location); ?>-tab" class="content">
+                    <div class="add-todo-container">
+                        <button type="button" onclick="addTodo('<?php echo htmlspecialchars($location); ?>')">+ To-Do hinzufügen</button>
+                    </div>
+                    <div id="todos-<?php echo htmlspecialchars($location); ?>"></div>
+                </div>
+            <?php endforeach; ?>
+
+            <div style="text-align: center; margin-top: 20px;">
+                <button type="submit">Weiter</button>
             </div>
-        </div>
-
-        <div class="tab-content" id="activities">
-            <h3>Tagesaktivitäten</h3>
-            <ul>
-                <?php foreach ($activities as $activity): ?>
-                    <li><?= $activity['day_date'] ?> - <?= $activity['title'] ?>: <?= $activity['description'] ?>, Preis: <?= $activity['price'] ?> CHF</li>
-                <?php endforeach; ?>
-            </ul>
-        </div>
-
-        <div class="tab-content" id="todos">
-            <h3>ToDo Übersicht</h3>
-            <ul>
-                <?php foreach ($todos as $todo): ?>
-                    <li><?= $todo['title'] ?> - <?= $todo['description'] ?> (Fällig: <?= $todo['deadline'] ?>) - <?= $todo['priority'] ? 'Hoch' : 'Niedrig' ?> - <?= $todo['is_completed'] ? 'Abgeschlossen' : 'Offen' ?></li>
-                <?php endforeach; ?>
-            </ul>
-        </div>
+        </form>
     </div>
-
-    <script>
-        const tabs = document.querySelectorAll('.tab-titles li');
-        const contents = document.querySelectorAll('.tab-content');
-
-        tabs.forEach(tab => {
-            tab.addEventListener('click', () => {
-                tabs.forEach(tab => tab.classList.remove('active'));
-                contents.forEach(content => content.classList.remove('active'));
-
-                tab.classList.add('active');
-                const tabId = tab.getAttribute('data-tab');
-                document.getElementById(tabId).classList.add('active');
-            });
-        });
-    </script>
 </body>
 </html>
+
