@@ -1,38 +1,44 @@
 <?php
-session_start();
-require 'db.php';
+    session_start();
+    require 'db.php';
 
-$error = "";
+    $error = "";
 
+    ini_set('display_errors', 1);
+    ini_set('display_startup_errors', 1);
+    error_reporting(E_ALL);
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = $_POST['email'];
-    $password = $_POST['password'];
+    if (isset($_SESSION['user_id'])) {
+        header("Location: ../sites/dashboard.php");
+        exit();
+    }
 
-    // NOTE Check fields
-    if (empty($email) || empty($password)) {
-        $error = "Bitte füllen Sie alle Felder aus.";
-    } else {
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
-        $stmt->execute([$email]);
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $email = trim($_POST['email']);
+        $password = trim($_POST['password']);
 
-        if ($user && password_verify($password, $user['password'])) {
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['email'] = $user['email'];
-
-            // NOTE Stay logged in: Set cookie if ticked
-            if (isset($_POST['remember'])) {
-                setcookie("user_email", $email, time() + 3600 * 24 * 30, "/"); 
-            }
-
-            header("Location: ../sites/dashboard.php");
-            exit();
+        if (empty($email) || empty($password)) {
+            $error = "Bitte füllen Sie alle Felder aus.";
         } else {
-            $error = "Ungültige E-Mail oder Passwort.";
+            $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
+            $stmt->execute([$email]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($user && password_verify($password, $user['password'])) {
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['email'] = $user['email'];
+
+                if (isset($_POST['remember'])) {
+                    setcookie("user_email", $email, time() + 3600 * 24 * 30, "/");
+                }
+
+                header("Location: ../sites/dashboard.php");
+                exit();
+            } else {
+                $error = "Ungültige E-Mail oder Passwort.";
+            }
         }
     }
-}
 ?>
 
 <!DOCTYPE html>
